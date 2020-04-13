@@ -2,15 +2,40 @@
 // src/App/Command/SendShiftAlertsCommand.php
 namespace App\Command;
 
-use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use App\Entity\ShiftBucket;
 use App\Entity\ShiftAlert;
+use Symfony\Component\Templating\EngineInterface;
 
-class SendShiftAlertsCommand extends ContainerAwareCommand
+class SendShiftAlertsCommand extends Command
 {
+    /**
+     * @var EntityManagerInterface
+     */
+    private $entityManager;
+    /**
+     * @var \Swift_Mailer
+     */
+    private $mailer;
+    /**
+     * @var EngineInterface
+     */
+    private $templating;
+    private $shiftEmail;
+
+    public function __construct(EntityManagerInterface $entityManager, \Swift_Mailer $mailer, EngineInterface $templating, array $shiftEmail)
+    {
+        parent::__construct();
+        $this->entityManager = $entityManager;
+        $this->mailer = $mailer;
+        $this->templating = $templating;
+        $this->shiftEmail = $shiftEmail;
+    }
+
     protected function configure()
     {
         $this
@@ -24,7 +49,6 @@ class SendShiftAlertsCommand extends ContainerAwareCommand
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $mailer = $this->getContainer()->get('mailer');
         $date_given = $input->getArgument('date');
         $jobs = explode(',', $input->getArgument('jobs'));
         $recipients = explode(',', $input->getArgument('recipients'));
@@ -34,8 +58,7 @@ class SendShiftAlertsCommand extends ContainerAwareCommand
             return;
         }
         $date->setTime(0, 0);
-        $em = $this->getContainer()->get('doctrine')->getManager();
-        $shifts = $em->getRepository('App:Shift')->findAt($date, $jobs);
+        $shifts = $this->entityManager->getRepository('App:Shift')->findAt($date, $jobs);
 
         // Build buckets from shifts
         $buckets = array();
@@ -67,18 +90,17 @@ class SendShiftAlertsCommand extends ContainerAwareCommand
             $dateFormatted = strftime("%A %e %B", $date->getTimestamp());
             $subject = '[ALERTE CRENEAUX] '. $dateFormatted;
 
-            $shiftEmail = $this->getContainer()->getParameter('emails.shift');
             $email = (new \Swift_Message($subject))
-                ->setFrom($shiftEmail['address'], $shiftEmail['from_name'])
+                ->setFrom($this->shiftEmail['address'], $this->shiftEmail['from_name'])
                 ->setTo($recipients)
                 ->setBody(
-                    $this->getContainer()->get('twig')->render(
+                    $this->templating->render(
                         'emails/shift_alerts.html.twig',
                         array('alerts' => $alerts)
                     ),
                     'text/html'
                 );
-            $mailer->send($email);
+            $this->mailer->send($email);
             $output->writeln('<fg=cyan;>Email sent with '.$nbAlerts.' alerts</>');
         } else {
             $output->writeln('<fg=cyan;>No shift alert to send</>');
