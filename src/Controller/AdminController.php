@@ -16,6 +16,7 @@ use App\Event\HelloassoEvent;
 use App\Form\BeneficiaryType;
 use App\Form\RegistrationType;
 use App\Service\SearchUserFormHelper;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Query\ResultSetMappingBuilder;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\ORM\Tools\Pagination\Paginator;
@@ -77,13 +78,11 @@ class AdminController extends Controller
      * @Method("POST")
      * @Security("has_role('ROLE_ADMIN')")
      */
-    public function searchAction(Request $request)
+    public function searchAction(Request $request, EntityManagerInterface $em)
     {
         if ($request->isXMLHttpRequest()) {
             $key = preg_replace('/\s+/', '', $request->get('key'));
             $return = array();
-
-            $em = $this->getDoctrine()->getManager();
 
             $rsm = new ResultSetMappingBuilder($em);
             $rsm->addRootEntityFromClassMetadata('App:Beneficiary', 'b');
@@ -167,14 +166,14 @@ class AdminController extends Controller
      * @Method({"GET","POST"})
      * @Security("has_role('ROLE_USER_MANAGER')")
      */
-    public function usersAction(Request $request, SearchUserFormHelper $formHelper)
+    public function usersAction(Request $request, SearchUserFormHelper $formHelper, EntityManagerInterface $em)
     {
         $form = $formHelper->getSearchForm($this->createFormBuilder(), $request->getQueryString());
         $form->handleRequest($request);
 
         $action = $form->get('action')->getData();
 
-        $qb = $formHelper->initSearchQuery($this->getDoctrine()->getManager());
+        $qb = $formHelper->initSearchQuery($em);
 
         $page = 1;
         $order = 'ASC';
@@ -258,10 +257,8 @@ class AdminController extends Controller
      * @Method({"GET","POST"})
      * @Security("has_role('ROLE_ADMIN')")
      */
-    public function adminUsersAction(Request $request, SearchUserFormHelper $formHelper)
+    public function adminUsersAction(Request $request, SearchUserFormHelper $formHelper, EntityManagerInterface $em)
     {
-        $em = $this->getDoctrine()->getManager();
-
         $admins = $em->getRepository("App:User")->findByRole('ROLE_ADMIN');
         $delete_forms = array();
         foreach ($admins as $admin) {
